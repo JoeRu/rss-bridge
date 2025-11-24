@@ -30,6 +30,8 @@ while IFS= read -r -d '' file; do
                     printf "DEBUG file added.\n";;
     esac
 done
+rm -Rf /app/cache/*
+chmod 777 /app/cache
 
 # This feature can set the internal port that apache uses to something else.
 # If docker is run on network:service mode, no two containers can use port 80
