@@ -75,6 +75,12 @@ class GameStarBridge extends BridgeAbstract
                 continue;
             }
             
+            // Skip podcast and video talk promotional articles
+            if (stripos($articleUrl, '/talk/') !== false || 
+                stripos($articleUrl, '/podcast/') !== false) {
+                continue;
+            }
+            
             try {
                 $articleHtml = getSimpleHTMLDOMCached($articleUrl, self::CACHE_TIMEOUT);
                 
@@ -157,25 +163,72 @@ class GameStarBridge extends BridgeAbstract
                     }
                 }
                 
-                // Add main image if available
+                // Add main image if available - images are on images.cgames.de CDN
+                $imageSrc = null;
+                $imageAlt = '';
+                
+                // Strategy 1: Look for images from cgames.de CDN directly
                 $images = $articleHtml->find('img');
                 foreach ($images as $img) {
-                    $src = $img->src;
-                    // Skip small images, icons, and tracking pixels
-                    if ($src && 
-                        !strpos($src, 'icon') && 
-                        !strpos($src, 'logo') && 
-                        !strpos($src, '1x1') &&
-                        (strpos($src, '/images/') !== false || 
-                         strpos($src, '/bilder/') !== false ||
-                         strpos($src, 'gamestar.de') !== false)) {
-                        $alt = $img->alt ?? '';
-                        
-                        // Use direct image URL - some feed readers can handle these despite CloudFlare
-                        $imageHtml = '<p><img src="' . $src . '" alt="' . htmlspecialchars($alt) . '" style="max-width:100%;height:auto;"></p>';
-                        $content = $imageHtml . "\n" . $content;
-                        break;
+                    $src = $img->src ?? '';
+                    
+                    // Only accept images from cgames.de CDN
+                    if (strpos($src, 'images.cgames.de') !== false || 
+                        strpos($src, 'cgames.de/images') !== false) {
+                        // Skip icons, logos, and tracking pixels
+                        if (strpos($src, 'icon') === false && 
+                            strpos($src, 'logo') === false && 
+                            strpos($src, '1x1') === false) {
+                            $imageSrc = $src;
+                            $imageAlt = $img->alt ?? '';
+                            break;
+                        }
                     }
+                }
+                
+                // Strategy 2: Try picture elements with source tags
+                if (!$imageSrc) {
+                    $pictures = $articleHtml->find('picture');
+                    foreach ($pictures as $picture) {
+                        $sources = $picture->find('source');
+                        foreach ($sources as $source) {
+                            $srcset = $source->srcset ?? '';
+                            if ($srcset && strpos($srcset, 'cgames.de') !== false) {
+                                // Extract first URL from srcset
+                                $srcsetParts = preg_split('/[\s,]+/', trim($srcset));
+                                foreach ($srcsetParts as $part) {
+                                    if (strpos($part, 'http') === 0) {
+                                        $imageSrc = $part;
+                                        break 2;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Try img within picture
+                        if (!$imageSrc) {
+                            $img = $picture->find('img', 0);
+                            if ($img) {
+                                $src = $img->src ?? '';
+                                if (strpos($src, 'cgames.de') !== false) {
+                                    $imageSrc = $src;
+                                    $imageAlt = $img->alt ?? '';
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Validate and clean image URL
+                if ($imageSrc) {
+                    // Make sure it's a full URL
+                    if (strpos($imageSrc, 'http') !== 0) {
+                        $imageSrc = 'https:' . $imageSrc;
+                    }
+                    
+                    $imageHtml = '<p><img src="' . htmlspecialchars($imageSrc) . '" alt="' . htmlspecialchars($imageAlt) . '" style="max-width:100%;height:auto;"></p>';
+                    $content = $imageHtml . "\n" . $content;
                 }
                 
                 // Try to find timestamp
