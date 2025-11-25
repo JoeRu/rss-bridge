@@ -5,7 +5,7 @@ class GameStarBridge extends BridgeAbstract
     const NAME = 'GameStar Bridge';
     const URI = 'https://www.gamestar.de';
     const DESCRIPTION = 'RSS feed for GameStar gaming news';
-    const MAINTAINER = 'JoehannesRumpf';
+    const MAINTAINER = 'JoeRu';
     const CACHE_TIMEOUT = 1800; // 30 minutes
 
     const PARAMETERS = [

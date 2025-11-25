@@ -5,7 +5,7 @@ class UsingerAnzeigerBridge extends BridgeAbstract
     const NAME = 'Usinger Anzeiger Bridge';
     const URI = 'https://www.usinger-anzeiger.de';
     const DESCRIPTION = 'RSS feed for Usinger Anzeiger local news';
-    const MAINTAINER = 'JoehannesRumpf';
+    const MAINTAINER = 'JoeRu';
     const CACHE_TIMEOUT = 1800; // 30 minutes
 
     const PARAMETERS = [

@@ -5,7 +5,7 @@ class FNPHochtaunusBridge extends BridgeAbstract
     const NAME = 'FNP Hochtaunus Bridge';
     const URI = 'https://www.fnp.de';
     const DESCRIPTION = 'RSS feed for FNP (Frankfurter Neue Presse) Hochtaunus local news';
-    const MAINTAINER = 'JoehannesRumpf';
+    const MAINTAINER = 'JoeRu';
     const CACHE_TIMEOUT = 1800; // 30 minutes
 
     const PARAMETERS = [
