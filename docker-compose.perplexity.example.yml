@@ -1,0 +1,43 @@
+version: '3'
+
+# Example docker-compose.yml for RSS-Bridge with Perplexity Bridge
+# Choose ONE of the methods below:
+
+services:
+  # METHOD 1: Using environment variable (RECOMMENDED)
+  rss-bridge-env:
+    container_name: rss-bridge
+    image: rssbridge/rss-bridge:latest
+    volumes:
+      - ./config:/config
+    ports:
+      - 3000:80
+    environment:
+      # Set your Perplexity API key here
+      - PERPLEXITY_API_KEY=pplx-your-api-key-here
+    restart: unless-stopped
+
+  # METHOD 2: Using .env file (MOST SECURE)
+  # Create a .env file with: PERPLEXITY_API_KEY=pplx-your-api-key-here
+  # Then uncomment this service and comment out the one above:
+  # rss-bridge-dotenv:
+  #   container_name: rss-bridge
+  #   image: rssbridge/rss-bridge:latest
+  #   volumes:
+  #     - ./config:/config
+  #   ports:
+  #     - 3000:80
+  #   environment:
+  #     - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+  #   restart: unless-stopped
+
+  # METHOD 3: Using config file in ./config/config.ini.php
+  # See config/PerplexityBridge.ini.php.example for format
+  # rss-bridge-config:
+  #   container_name: rss-bridge
+  #   image: rssbridge/rss-bridge:latest
+  #   volumes:
+  #     - ./config:/config  # Place your config.ini.php in ./config/
+  #   ports:
+  #     - 3000:80
+  #   restart: unless-stopped

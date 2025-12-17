@@ -10,20 +10,24 @@ class PerplexityBridge extends BridgeAbstract
 
     const CONFIGURATION = [
         'api_key' => [
-            'required' => true,
-            'name' => 'API Key',
+            'required' => false,
+            'name' => 'API Key (or use PERPLEXITY_API_KEY env variable)',
+            'defaultValue' => '',
         ],
         'session_token' => [
             'required' => false,
             'name' => 'Session Token (legacy)',
+            'defaultValue' => '',
         ],
         'cf_clearance' => [
             'required' => false,
             'name' => 'Cloudflare Clearance Cookie (legacy)',
+            'defaultValue' => '',
         ],
         'cf_bm' => [
             'required' => false,
             'name' => 'Cloudflare BM Cookie (legacy)',
+            'defaultValue' => '',
         ],
     ];
 
@@ -177,22 +181,26 @@ class PerplexityBridge extends BridgeAbstract
 
     private function getApiContents($url)
     {
-        $apiKey = $this->getOption('api_key');
+        // Try environment variable first, then config
+        $apiKey = getenv('PERPLEXITY_API_KEY') ?: $this->getOption('api_key');
         $sessionToken = $this->getOption('session_token');
 
         if (!$apiKey && !$sessionToken) {
-            throw new \Exception('API key is required. Please configure it in config.ini.php');
+            throw new \Exception('API key is required. Please configure it in config.ini.php or set PERPLEXITY_API_KEY environment variable');
         }
 
-        $headers = $this->buildHeaders();
+        $headers = $this->buildHeaders($apiKey);
         $options = $this->buildCurlOptions();
 
         return getContents($url, $headers, $options);
     }
 
-    private function buildHeaders()
+    private function buildHeaders($apiKey = null)
     {
-        $apiKey = $this->getOption('api_key');
+        // Use passed API key or try environment variable, then config
+        if (!$apiKey) {
+            $apiKey = getenv('PERPLEXITY_API_KEY') ?: $this->getOption('api_key');
+        }
         $sessionToken = $this->getOption('session_token');
 
         // Get language preference
