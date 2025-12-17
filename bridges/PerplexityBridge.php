@@ -4,22 +4,26 @@ class PerplexityBridge extends BridgeAbstract
 {
     const NAME = 'Perplexity Discover Feed';
     const URI = 'https://www.perplexity.ai';
-    const DESCRIPTION = 'Returns news and articles from Perplexity.ai Discover feed';
+    const DESCRIPTION = 'Returns news and articles from Perplexity.ai Discover feed using API key authentication';
     const MAINTAINER = 'RSS-Bridge Community';
     const CACHE_TIMEOUT = 1800; // 30 minutes
 
     const CONFIGURATION = [
-        'session_token' => [
+        'api_key' => [
             'required' => true,
-            'name' => 'Session Token',
+            'name' => 'API Key',
+        ],
+        'session_token' => [
+            'required' => false,
+            'name' => 'Session Token (legacy)',
         ],
         'cf_clearance' => [
             'required' => false,
-            'name' => 'Cloudflare Clearance Cookie',
+            'name' => 'Cloudflare Clearance Cookie (legacy)',
         ],
         'cf_bm' => [
             'required' => false,
-            'name' => 'Cloudflare BM Cookie',
+            'name' => 'Cloudflare BM Cookie (legacy)',
         ],
     ];
 
@@ -173,10 +177,11 @@ class PerplexityBridge extends BridgeAbstract
 
     private function getApiContents($url)
     {
+        $apiKey = $this->getOption('api_key');
         $sessionToken = $this->getOption('session_token');
 
-        if (!$sessionToken) {
-            throw new \Exception('Session token is required. Please configure it in config.ini.php');
+        if (!$apiKey && !$sessionToken) {
+            throw new \Exception('API key is required. Please configure it in config.ini.php');
         }
 
         $headers = $this->buildHeaders();
@@ -187,22 +192,8 @@ class PerplexityBridge extends BridgeAbstract
 
     private function buildHeaders()
     {
+        $apiKey = $this->getOption('api_key');
         $sessionToken = $this->getOption('session_token');
-
-        $cookies = [
-            '__Secure-next-auth.session-token=' . $sessionToken,
-        ];
-
-        // Add optional Cloudflare cookies if configured
-        $cfClearance = $this->getOption('cf_clearance');
-        if ($cfClearance) {
-            $cookies[] = 'cf_clearance=' . $cfClearance;
-        }
-
-        $cfBm = $this->getOption('cf_bm');
-        if ($cfBm) {
-            $cookies[] = '__cf_bm=' . $cfBm;
-        }
 
         // Get language preference
         $language = $this->getInput('language') ?? 'en';
@@ -213,14 +204,38 @@ class PerplexityBridge extends BridgeAbstract
             'Accept-Language: ' . $acceptLanguage,
             'Accept-Encoding: gzip, deflate, br',
             'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
-            'Referer: https://www.perplexity.ai/discover',
-            'sec-fetch-dest: empty',
-            'sec-fetch-mode: cors',
-            'sec-fetch-site: same-origin',
-            'x-app-apiclient: default',
-            'x-app-apiversion: ' . $this->apiVersion,
-            'Cookie: ' . implode('; ', $cookies),
         ];
+
+        // Use API key authentication if available (preferred method)
+        if ($apiKey) {
+            $headers[] = 'Authorization: Bearer ' . $apiKey;
+            $headers[] = 'Accept: application/json';
+            $headers[] = 'Content-Type: application/json';
+        } else {
+            // Fall back to session token method (legacy)
+            $cookies = [
+                '__Secure-next-auth.session-token=' . $sessionToken,
+            ];
+
+            // Add optional Cloudflare cookies if configured
+            $cfClearance = $this->getOption('cf_clearance');
+            if ($cfClearance) {
+                $cookies[] = 'cf_clearance=' . $cfClearance;
+            }
+
+            $cfBm = $this->getOption('cf_bm');
+            if ($cfBm) {
+                $cookies[] = '__cf_bm=' . $cfBm;
+            }
+
+            $headers[] = 'Referer: https://www.perplexity.ai/discover';
+            $headers[] = 'sec-fetch-dest: empty';
+            $headers[] = 'sec-fetch-mode: cors';
+            $headers[] = 'sec-fetch-site: same-origin';
+            $headers[] = 'x-app-apiclient: default';
+            $headers[] = 'x-app-apiversion: ' . $this->apiVersion;
+            $headers[] = 'Cookie: ' . implode('; ', $cookies);
+        }
 
         return $headers;
     }
