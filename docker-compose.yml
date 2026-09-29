@@ -12,3 +12,11 @@ services:
     # environment:
     #   - PERPLEXITY_API_KEY=pplx-your-api-key-here
     restart: unless-stopped
+
+# Pinned: rss-bridge-egress.service (my.jru.me) routes this subnet's internet
+# traffic via wg0 -> Fritz!Box, because Cloudflare blocks the datacenter IP.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
