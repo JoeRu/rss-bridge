@@ -2,9 +2,9 @@
 
 class YoutubeBridge extends BridgeAbstract
 {
-    const NAME = 'YouTube Bridge';
+    const NAME = 'YouTube';
     const URI = 'https://www.youtube.com';
-    const CACHE_TIMEOUT = 60 * 60 * 3;
+    const CACHE_TIMEOUT = 60 * 60 * 3; // 3 hours
     const DESCRIPTION = 'Returns the 10 newest videos by username/channel/playlist or search';
 
     const PARAMETERS = [
@@ -61,6 +61,11 @@ class YoutubeBridge extends BridgeAbstract
                 'type' => 'number',
                 'title' => 'Maximum duration for the video in minutes',
                 'exampleValue' => 10
+            ],
+            'skip_members_only' => [
+                'name' => 'Skip members-only videos',
+                'type' => 'checkbox',
+                'title' => 'Hide videos that require a channel membership to watch'
             ]
         ]
     ];
@@ -163,8 +168,15 @@ class YoutubeBridge extends BridgeAbstract
                 // playlist probably doesnt exists
                 throw new \Exception('Unable to find playlist: ' . $url_listing);
             }
-            $jsonData = $jsonData->tabRenderer->content->sectionListRenderer->contents[0]->itemSectionRenderer;
-            $jsonData = $jsonData->contents[0]->playlistVideoListRenderer->contents;
+
+            // Keeping the old JSON paths just in case YouTube is using them for some pages
+            if (isset($jsonData->tabRenderer->content->sectionListRenderer->contents[0]->itemSectionRenderer->contents[0]->playlistVideoListRenderer)) {
+                $jsonData = $jsonData->tabRenderer->content->sectionListRenderer->contents[0]->itemSectionRenderer;
+                $jsonData = $jsonData->contents[0]->playlistVideoListRenderer->contents;
+            } elseif (isset($jsonData->tabRenderer->content->sectionListRenderer->contents[0]->itemSectionRenderer->contents)) {
+                $jsonData = $jsonData->tabRenderer->content->sectionListRenderer->contents[0]->itemSectionRenderer->contents;
+            }
+
             $item_count = count($jsonData);
 
             if ($item_count > 15 || $filterByDuration) {
@@ -183,8 +195,14 @@ class YoutubeBridge extends BridgeAbstract
             });
         } elseif ($search) {
             // search
-            $url_listing = self::URI . '/results?search_query=' . urlencode($search) . '&sp=CAI%253D';
-            $html = $this->fetch($url_listing);
+            $today_filter = 'EgIIAg'; // restrict the upload date to the last 24 hours
+            $url_listing = self::URI . '/results?sp=' . $today_filter . '&search_query=' . urlencode($search);
+            if (!preg_match("/\b(before|after):/i", $search)) {
+                // unless explicitly overridden, a special "after:yyyy-mm-dd" keyword is appended to restrict the upload date to the last 6-30 hours
+                $html = $this->fetch($url_listing . urlencode(' after:' . date('Y-m-d', strtotime('-6 hours'))));
+            } else {
+                $html = $this->fetch($url_listing);
+            }
             $jsonData = $this->extractJsonFromHtml($html);
             $jsonData = $jsonData->contents->twoColumnSearchResultsRenderer->primaryContents;
             $jsonData = $jsonData->sectionListRenderer->contents[0]->itemSectionRenderer->contents;
@@ -412,8 +430,13 @@ class YoutubeBridge extends BridgeAbstract
 
     private function extractJsonFromHtml($html)
     {
+        // The JSON payload now has the potential to exceed 1 million characters.
+        // This hits the default PCRE backtracking limit. Bypassing this by temporarily upping the limit.
+        $previousBacktrackLimit = ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', '10000000');
         $scriptRegex = '/var ytInitialData = (.*?);<\/script>/';
         $result = preg_match($scriptRegex, $html, $matches);
+        ini_set('pcre.backtrack_limit', $previousBacktrackLimit);
         if (! $result) {
             $this->logger->debug('Could not find ytInitialData');
             return null;
@@ -435,8 +458,20 @@ class YoutubeBridge extends BridgeAbstract
                 $wrapper = $item->videoRenderer;
             } elseif (isset($item->playlistVideoRenderer)) {
                 $wrapper = $item->playlistVideoRenderer;
-            } elseif (isset($item->richItemRenderer)) {
+            } elseif (isset($item->richItemRenderer->content->videoRenderer)) {
                 $wrapper = $item->richItemRenderer->content->videoRenderer;
+            } elseif (isset($item->richItemRenderer->content->lockupViewModel)) {
+                // Newer YouTube layout: richItemRenderer can wrap a lockupViewModel rather than a videoRenderer.
+                $wrapper = $this->wrapLockupViewModel($item->richItemRenderer->content->lockupViewModel);
+                if ($wrapper === null) {
+                    continue;
+                }
+            } elseif (isset($item->lockupViewModel)) {
+                // Newer YouTube layout: lockupViewModel can also be a direct child of itemSectionRenderer->contents.
+                $wrapper = $this->wrapLockupViewModel($item->lockupViewModel);
+                if ($wrapper === null) {
+                    continue;
+                }
             } else {
                 continue;
             }
@@ -495,6 +530,44 @@ class YoutubeBridge extends BridgeAbstract
                 break;
             }
         }
+    }
+
+    private function wrapLockupViewModel($lockup)
+    {
+        $videoId = $lockup->contentId ?? null;
+        $title = $lockup->metadata->lockupMetadataViewModel->title->content ?? null;
+        if (!$videoId || !$title) {
+            return null;
+        }
+
+        if ($this->getInput('skip_members_only')) {
+            $rows = $lockup->metadata->lockupMetadataViewModel->metadata->contentMetadataViewModel->metadataRows ?? [];
+            foreach ($rows as $row) {
+                foreach ($row->badges ?? [] as $badge) {
+                    if (($badge->badgeViewModel->badgeStyle ?? null) === 'BADGE_MEMBERS_ONLY') {
+                        return null;
+                    }
+                }
+            }
+        }
+
+        $wrapper = new \stdClass();
+        $wrapper->videoId = $videoId;
+        $wrapper->title = (object) ['runs' => [(object) ['text' => $title]]];
+        $wrapper->thumbnailOverlays = [];
+
+        // Duration sits on a thumbnail badge such as "12:07".
+        foreach ($lockup->contentImage->thumbnailViewModel->overlays ?? [] as $overlay) {
+            foreach ($overlay->thumbnailBottomOverlayViewModel->badges ?? [] as $badge) {
+                $text = $badge->thumbnailBadgeViewModel->text ?? null;
+                if (is_string($text) && preg_match('/^\d{1,2}(:\d{2}){1,2}$/', $text)) {
+                    $wrapper->lengthText = (object) ['simpleText' => $text];
+                    break 2;
+                }
+            }
+        }
+
+        return $wrapper;
     }
 
     private function addItem($videoId, $title, $author, $description, $timestamp, $thumbnail = '')
