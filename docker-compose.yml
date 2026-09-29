@@ -7,10 +7,11 @@ services:
       - ./config:/config
     ports:
       - 4000:80
-    # Environment variables for bridge configuration
-    # Uncomment and set your API keys here (or use .env file)
-    # environment:
-    #   - PERPLEXITY_API_KEY=pplx-your-api-key-here
+    environment:
+      # update-perplexity.php refuses to write without it. Value lives in .env
+      # next to this file (0600, not committed).
+      - PERPLEXITY_UPDATE_TOKEN=${PERPLEXITY_UPDATE_TOKEN:-}
+      # - PERPLEXITY_API_KEY=pplx-your-api-key-here
     restart: unless-stopped
 
 # Pinned: rss-bridge-egress.service (my.jru.me) routes this subnet's internet

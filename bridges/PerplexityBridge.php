@@ -39,6 +39,11 @@ class PerplexityBridge extends BridgeAbstract
             'name' => 'User-Agent of the browser the cookies came from',
             'defaultValue' => '',
         ],
+        'cookie' => [
+            'required' => false,
+            'name' => 'Full Cookie header from the browser (preferred over the single cookies and the API key)',
+            'defaultValue' => '',
+        ],
     ];
 
     const PARAMETERS = [
@@ -195,7 +200,7 @@ class PerplexityBridge extends BridgeAbstract
         $apiKey = getenv('PERPLEXITY_API_KEY') ?: $this->getOption('api_key');
         $sessionToken = $this->getOption('session_token');
 
-        if (!$apiKey && !$sessionToken) {
+        if (!$this->getOption('cookie') && !$apiKey && !$sessionToken) {
             throw new \Exception('API key is required. Please configure it in config.ini.php or set PERPLEXITY_API_KEY environment variable');
         }
 
@@ -236,8 +241,20 @@ class PerplexityBridge extends BridgeAbstract
             'User-Agent: ' . $this->getUserAgent(),
         ];
 
-        // Use API key authentication if available (preferred method)
-        if ($apiKey) {
+        // The full Cookie header stored by update-perplexity.php wins: it is what the
+        // browser sent (whatever the session cookie is called or however it is chunked),
+        // and an API key is not accepted by this www.perplexity.ai endpoint anyway.
+        $rawCookie = trim((string) $this->getOption('cookie'));
+        if ($rawCookie !== '' && !preg_match('/[\r\n]/', $rawCookie)) {
+            $headers[] = 'Referer: https://www.perplexity.ai/discover';
+            $headers[] = 'sec-fetch-dest: empty';
+            $headers[] = 'sec-fetch-mode: cors';
+            $headers[] = 'sec-fetch-site: same-origin';
+            $headers[] = 'x-app-apiclient: default';
+            $headers[] = 'x-app-apiversion: ' . $this->apiVersion;
+            $headers[] = 'Cookie: ' . $rawCookie;
+        } elseif ($apiKey) {
+            // Use API key authentication if available
             $headers[] = 'Authorization: Bearer ' . $apiKey;
             $headers[] = 'Accept: application/json';
             $headers[] = 'Content-Type: application/json';
