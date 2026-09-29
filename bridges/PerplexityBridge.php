@@ -8,6 +8,11 @@ class PerplexityBridge extends BridgeAbstract
     const MAINTAINER = 'RSS-Bridge Community';
     const CACHE_TIMEOUT = 1800; // 30 minutes
 
+    // Used when no user_agent is configured. Cloudflare binds cf_clearance to the
+    // user agent (and IP) of the browser that solved the challenge, so the
+    // configured value should be that browser's - update-perplexity.php stores it.
+    const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
+
     const CONFIGURATION = [
         'api_key' => [
             'required' => false,
@@ -27,6 +32,11 @@ class PerplexityBridge extends BridgeAbstract
         'cf_bm' => [
             'required' => false,
             'name' => 'Cloudflare BM Cookie (legacy)',
+            'defaultValue' => '',
+        ],
+        'user_agent' => [
+            'required' => false,
+            'name' => 'User-Agent of the browser the cookies came from',
             'defaultValue' => '',
         ],
     ];
@@ -195,6 +205,18 @@ class PerplexityBridge extends BridgeAbstract
         return getContents($url, $headers, $options);
     }
 
+    private function getUserAgent()
+    {
+        $userAgent = trim((string) $this->getOption('user_agent'));
+
+        // A header value must be a single line
+        if ($userAgent === '' || preg_match('/[\r\n]/', $userAgent)) {
+            return self::DEFAULT_USER_AGENT;
+        }
+
+        return $userAgent;
+    }
+
     private function buildHeaders($apiKey = null)
     {
         // Use passed API key or try environment variable, then config
@@ -211,7 +233,7 @@ class PerplexityBridge extends BridgeAbstract
             'Accept: */*',
             'Accept-Language: ' . $acceptLanguage,
             'Accept-Encoding: gzip, deflate, br',
-            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+            'User-Agent: ' . $this->getUserAgent(),
         ];
 
         // Use API key authentication if available (preferred method)

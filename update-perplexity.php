@@ -33,6 +33,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sessionToken = $_POST['session_token'] ?? '';
     $cfClearance = $_POST['cf_clearance'] ?? '';
     $cfBm = $_POST['cf_bm'] ?? '';
+
+    // User-Agent of the browser the cookies came from: cf_clearance is only valid
+    // together with it. The form fills it from navigator.userAgent; API callers
+    // may pass it. Fall back to the request's own header only if it is a browser's.
+    $userAgent = trim($_POST['user_agent'] ?? '');
+    if ($userAgent === '' && str_starts_with($_SERVER['HTTP_USER_AGENT'] ?? '', 'Mozilla/')) {
+        $userAgent = $_SERVER['HTTP_USER_AGENT'];
+    }
+
+    // Values end up inside "..." in an ini file: a quote or line break would let
+    // a caller add arbitrary keys or sections.
+    $clean = fn ($v) => str_replace(['"', "\r", "\n"], '', trim($v));
+    $sessionToken = $clean($sessionToken);
+    $cfClearance = $clean($cfClearance);
+    $cfBm = $clean($cfBm);
+    $userAgent = $clean($userAgent);
     
     // Validate session token
     if (empty($sessionToken)) {
@@ -71,7 +87,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $newSection .= "session_token = \"$sessionToken\"\n\n";
     $newSection .= "; OPTIONAL: Cloudflare cookies\n";
     $newSection .= "cf_clearance = \"$cfClearance\"\n";
-    $newSection .= "cf_bm = \"$cfBm\"\n";
+    $newSection .= "cf_bm = \"$cfBm\"\n\n";
+    $newSection .= "; Browser the cookies came from (cf_clearance is bound to it)\n";
+    $newSection .= "user_agent = \"$userAgent\"\n";
     
     $configContent = rtrim($configContent) . $newSection;
     
@@ -389,6 +407,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 >
                 <div class="hint">Cookie: __cf_bm</div>
             </div>
+
+            <div class="form-group">
+                <label for="user_agent">
+                    User-Agent <span class="optional">(filled from this browser)</span>
+                </label>
+                <input
+                    type="text"
+                    id="user_agent"
+                    name="user_agent"
+                    readonly
+                >
+                <div class="hint">Cloudflare binds cf_clearance to this browser and its IP: copy the cookies from this same browser, reaching perplexity.ai over the home IPv4 line.</div>
+            </div>
             
             <div class="button-group">
                 <button type="submit" class="btn-primary">
@@ -421,6 +452,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script>
         const form = document.getElementById('updateForm');
         const alertBox = document.getElementById('alert');
+
+        // The bridge must send the same User-Agent as the browser the cookies came from
+        document.getElementById('user_agent').value = navigator.userAgent;
         
         // Load token from localStorage if available
         const savedToken = localStorage.getItem('perplexity_update_token');
